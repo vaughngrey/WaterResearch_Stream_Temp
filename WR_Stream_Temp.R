@@ -70,12 +70,6 @@ library(grid)
 setwd("~/OneDrive/R/")
 load("Scripts/WaterResearch_Stream_Temp/data.wt.inputs.Q.RData") # load input data
 
-ec <- read.csv("Outputs/WT/EC.data.record.csv", header = T) # load EC data
-ec.delta <- read.csv("Outputs/WT/EC.delta.csv", header = T) # load EC data
-
-ph <- read.csv("Outputs/WT/PH.data.record.csv", header = T) # load pH data
-ph.delta <- read.csv("Outputs/WT/ph.delta.csv", header = T) # load pH data
-
 #####################################################################################################################################################################
 ### PART A: Calculation of water temperature trends ###
 #####################################################################################################################################################################
@@ -85,7 +79,6 @@ ph.delta <- read.csv("Outputs/WT/ph.delta.csv", header = T) # load pH data
 ##########################
 
 trend.CI <- 0.95
-
 
 ########################################################
 ### Removing of sites with insufficient data record  ###
@@ -2093,7 +2086,6 @@ rm(data.st.sp)
 
 ################################
 ### Add EC and pH
-ec <- read.csv("Outputs/WT/EC.data.record.csv", header = T) # load EC data
 
 ec$Time <- as.numeric(substr(ec$Time,1,2)) + (as.numeric(substr(ec$Time,4,5))/60)
 ec$Time <- round(ec$Time, digits = 2)
@@ -2107,8 +2099,6 @@ data.st <- left_join(data.st, ec, by = c("Site","Date","Time"))
 
 data.st <- data.st[!is.na(data.st$EC),]
 
-
-ph <- read.csv("Outputs/WT/PH.data.record.csv", header = T) # load EC data
 
 ph$Time <- as.numeric(substr(ph$Time,1,2)) + (as.numeric(substr(ph$Time,4,5))/60)
 ph$Time <- round(ph$Time, digits = 2)

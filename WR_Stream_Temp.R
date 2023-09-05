@@ -3,7 +3,8 @@
 
 # Author: Vaughn Grey
 # Created: 16/05/2023
-# Version for submission to Water Research: 10/07/2023
+# Version for initial submission to Water Research: 10/07/2023
+# Updated 05/09/2023 responding to reviewer comments
 
 #' Code parts:
 #' Part A: Calculation of water temperature trends
@@ -15,6 +16,8 @@
 ###############
 ### Options ###
 ###############
+
+options.saving <- TRUE # if true saves plots
 
 # Part A
 options.hm.plot <- TRUE
@@ -57,6 +60,7 @@ library(lubridate)
 library(randomForest)
 library(Hmisc)
 library(corrplot)
+library(grid)
 
 ##################
 ### Load data ###
@@ -64,7 +68,13 @@ library(corrplot)
 
 ### Load data from "Water_temp_dataset.R" 
 setwd("~/OneDrive/R/")
-load("Scripts/WaterResearch_Stream_Temp/data.wt.inputs.RData") # load input data
+load("Scripts/WaterResearch_Stream_Temp/data.wt.inputs.Q.RData") # load input data
+
+ec <- read.csv("Outputs/WT/EC.data.record.csv", header = T) # load EC data
+ec.delta <- read.csv("Outputs/WT/EC.delta.csv", header = T) # load EC data
+
+ph <- read.csv("Outputs/WT/PH.data.record.csv", header = T) # load pH data
+ph.delta <- read.csv("Outputs/WT/ph.delta.csv", header = T) # load pH data
 
 #####################################################################################################################################################################
 ### PART A: Calculation of water temperature trends ###
@@ -76,26 +86,6 @@ load("Scripts/WaterResearch_Stream_Temp/data.wt.inputs.RData") # load input data
 
 trend.CI <- 0.95
 
-### Create site numbers
-site.numbers <- unique(data.wt$Site)
-site.numbers <- site.numbers[order(site.numbers)]
-site.numbers <- data.frame(Site = site.numbers)
-site.numbers$S.num <- seq(1,length(site.numbers$Site),by=1)
-
-# and text nudges for plotting
-site.numbers$xnudge <- 0
-site.numbers$ynudge <- 0
-site.numbers$ynudge[5] <- 0.01
-site.numbers$xnudge[31] <- -0.015
-site.numbers$ynudge[31] <- 0.01
-site.numbers$xnudge[33] <- 0.001
-site.numbers$xnudge[34] <- -0.027
-site.numbers$ynudge[41] <- -0.017
-site.numbers$xnudge[44] <- -0.001
-site.numbers$ynudge[47] <- 0.005
-site.numbers$xnudge[48] <- 0.01
-site.numbers$xnudge[70] <- -0.01
-site.numbers$ynudge[73] <- 0.01
 
 ########################################################
 ### Removing of sites with insufficient data record  ###
@@ -144,6 +134,30 @@ wt.long.gaps <- wt.long.gaps[wt.long.gaps$n >= 20,]
 
 wt.sites <- wt.long.gaps$Site
 
+### Create site numbers
+#data.wt <- data.input.deltaWT
+#site.numbers <- unique(data.wt$Site)
+site.numbers <- wt.sites
+site.numbers <- site.numbers[order(site.numbers)]
+site.numbers <- data.frame(Site = site.numbers)
+site.numbers$S.num <- seq(1,length(site.numbers$Site),by=1)
+
+# and text nudges for plotting
+site.numbers$xnudge <- 0
+site.numbers$ynudge <- 0
+site.numbers$ynudge[5] <- 0.01
+site.numbers$xnudge[31] <- -0.015
+site.numbers$ynudge[31] <- 0.01
+site.numbers$xnudge[33] <- 0.001
+site.numbers$xnudge[34] <- -0.027
+site.numbers$ynudge[41] <- -0.017
+site.numbers$xnudge[44] <- -0.001
+site.numbers$ynudge[47] <- 0.005
+site.numbers$xnudge[48] <- 0.01
+site.numbers$xnudge[70] <- -0.01
+site.numbers$ynudge[73] <- 0.01
+
+
 # Plots, data count by year
 if (options.hm.plot == TRUE){
   
@@ -171,16 +185,61 @@ hm_plot <- ggplot(hm_count, aes(x = year, y = S.num, fill = Count))+
   xlab("Year") +
   ylab("Site") 
 
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_3_heat_map.pdf", hm_plot, width=18, height=18, unit="cm", dpi=1000)
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_3_heat_map.jpeg", hm_plot, width=18, height=18, unit="cm", dpi=330)
-
+if (options.saving == TRUE) {
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_1_heat_map.pdf", hm_plot, width=18, height=18, unit="cm", dpi=1000)
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_1_heat_map.jpeg", hm_plot, width=18, height=18, unit="cm", dpi=330)
+}
 }
 
 # Environment clean up
-rm(hm_count, hm_data, wt.first, wt.last, wt.long, wt.long.gaps, wt.n)
+rm(hm_data, wt.first, wt.last, wt.long, wt.long.gaps, wt.n)
 
 # Subset to only those required for further analysis
 wt <- wt[wt$Site %in% wt.sites,]
+
+########################
+### WT data summary  ###
+########################
+
+# Summary of WT stats
+wt.summary <- wt %>% group_by(Site) %>% summarise(
+  n.samples = n(), 
+  wt.median = median(Value_Numeric), wt.min = min(Value_Numeric), wt.max = max(Value_Numeric))
+
+# Number of samples per year including years without any samples
+wt.summary.peryear <- wt 
+wt.summary.peryear$year <- year(wt.summary.peryear$Date)
+wt.summary.peryear <- wt.summary.peryear %>% group_by(Site, year) %>% summarise(n.samp = n())
+
+all.years <- seq(1992, 2021, by = 1)
+all.years <- tidyr::crossing(all.years, unique(wt$Site))
+colnames(all.years) <- c("year","Site")
+wt.summary.peryear <- left_join(all.years, wt.summary.peryear, by = c("Site","year"))
+wt.summary.peryear$n.samp <- ifelse(is.na(wt.summary.peryear$n.samp),0, wt.summary.peryear$n.samp)
+wt.summary.peryear <- wt.summary.peryear %>% group_by(Site) %>% summarise(n.median = median(n.samp), n.min = min(n.samp), n.max = max(n.samp))
+
+# Final table
+wt.summary <- left_join(wt.summary, wt.summary.peryear, by = "Site")
+wt.summary <- left_join(wt.summary, site.numbers[, c("Site","S.num")], by = "Site")
+
+wt.summary[,3:6] <- round(wt.summary[,3:6], digits = 1)
+wt.summary$wt.median <- format(wt.summary$wt.median, nsmall = 1)
+wt.summary$wt.min <- format(wt.summary$wt.min, nsmall = 1)
+wt.summary$wt.max <- format(wt.summary$wt.max, nsmall = 1)
+wt.summary$n.median <- format(wt.summary$n.median, nsmall = 1)
+wt.summary$n.min <- format(wt.summary$n.min, nsmall = 0)
+wt.summary$n.max <- format(wt.summary$n.max, nsmall = 0)
+
+wt.summary$n.sum <- paste0(wt.summary$n.median, " (",wt.summary$n.min,", ",wt.summary$n.max,")")
+wt.summary$wt.sum <- paste0(wt.summary$wt.median, " (",wt.summary$wt.min,", ",wt.summary$wt.max,")")
+wt.summary$Site <- wt.summary$S.num
+wt.summary <- wt.summary[,c("Site","n.samples","n.sum","wt.sum")]
+colnames(wt.summary) <- c("Site","Total number of samples","Median number of samples per year (min, max)",
+                          "Median stream temperature observations (°C) (min, max)")
+
+library(flextable)
+flextable(wt.summary) %>% save_as_docx(path = "Outputs/WaterResearch_Stream_Temp/Table_S1.docx")
+
 
 ############################
 ### Preparation for GAM  ###
@@ -227,6 +286,58 @@ summary(c.gam.L)$s.table[1,4] #p-value
 AIC(c.gam.L)
 BIC(c.gam.L)
 
+###############################################
+### Impact of less samples on overall trend ###
+###############################################
+
+trend.test <- left_join(all.years, hm_count[,c("Site","year","Count")], by = c("Site","year"))
+trend.test$Count <- ifelse(is.na(trend.test$Count),0, trend.test$Count)
+
+wt.trend.test.store <- vector('list', length = 3)
+
+for (i in 0:2){
+  wt.trend.test <- trend.test %>% group_by(Site) %>% summarise(n.times = sum(Count <= 1)) # 1 or less samples
+  wt.trend.test <- wt.trend.test[wt.trend.test$n.times <= i,] # occuring i or less times
+  wt.trend.test <- unique(wt.trend.test$Site)
+  
+  # Now cut wt.sites to only those also in wt.sites.reducedsamples
+  wt.trend.test <- cs.data[cs.data$Site %in% wt.trend.test,]
+  
+  ### fit GAM with splines, linear trend
+  wt.trend.test.gam.L <- mgcv::gam(Value_Numeric ~ Year + Site + s(fr_yr, bs="cc") + s(Hour, bs = "cc"), 
+                       data = wt.trend.test)
+  
+  wt.trend.test.preds.L.30yrs <- round(wt.trend.test.gam.L$coefficients[[2]] * 30, digits = 2)
+
+  # calculate confidence intervals
+  wt.trend.test.preds.30yrs.lowerCI <- round(confint.lm(wt.trend.test.gam.L, level = trend.CI)[2,1] * 30, digits = 2)
+  wt.trend.test.preds.30yrs.upperCI <- round(confint.lm(wt.trend.test.gam.L, level = trend.CI)[2,2] * 30, digits = 2)
+  
+  wt.trend.test.preds <- data.frame(n.site = length(unique(wt.trend.test$Site)), trend = wt.trend.test.preds.L.30yrs, 
+                                    t.LCI = wt.trend.test.preds.30yrs.lowerCI,
+                                    t.UCI = wt.trend.test.preds.30yrs.upperCI)
+  
+  wt.trend.test.store[[i+1]] <- wt.trend.test.preds
+  
+}
+
+wt.trend.test.summary <- do.call(rbind, wt.trend.test.store)
+
+wt.trend.test.summary[4,1] <- length(unique(cs.data$Site))
+wt.trend.test.summary[4,2] <- format(round(preds.L.30yrs, digits = 2), nsmall = 2)
+wt.trend.test.summary[4,3] <- round(preds.30yrs.lowerCI, digits = 2)
+wt.trend.test.summary[4,4] <- round(preds.30yrs.upperCI, digits = 2)
+
+wt.trend.test.summary <- wt.trend.test.summary[c(4,1,2,3),]
+wt.trend.test.summary$t.summary <- paste0(wt.trend.test.summary$trend, " [",wt.trend.test.summary$t.LCI,", ",wt.trend.test.summary$t.UCI,"]")
+
+wt.trend.test.summary$Scenario <- c("All 75 sites", "0 years with 0 or 1 samples", "1 year with 0 or 1 samples", "2 years with 0 or 1 samples")
+wt.trend.test.summary <- wt.trend.test.summary[,c("Scenario","n.site","t.summary")]
+colnames(wt.trend.test.summary) <- c("Scenario","Number of sites","Trend")
+
+flextable(wt.summary) %>% save_as_docx(path = "Outputs/WaterResearch_Stream_Temp/Table_S1.docx")
+
+
 #######################
 ### Autocorrelation ###
 #######################
@@ -257,8 +368,9 @@ acf.mod4.gamL <- acf(c.gam.L$residuals, plot=FALSE)$acf %>%
 acf.c <- acf(c.gam.L$residuals, plot=FALSE)$acf %>% 
   as_tibble() %>% mutate(lags = 1:n())
 
+if (options.saving == TRUE) {
 ggsave(plot = acf.mod4.gamL, filename = "Outputs/WaterResearch_Stream_Temp/acf_plot_GAM.pdf", width = 12, height = 12, dpi = 1000)
-
+}
 }
 
 #####################
@@ -267,9 +379,9 @@ ggsave(plot = acf.mod4.gamL, filename = "Outputs/WaterResearch_Stream_Temp/acf_p
 
 if (options.gam.plots == TRUE){
   
-  alllabel <- expression("Water Temperature" ~ (degree*C))
-  ylabel <- expression("Observed Water Temperature" ~ (degree*C))
-  xlabel <- expression("Modelled Water Temperature" ~ (degree*C))
+  alllabel <- expression("Stream Temperature" ~ (degree*C))
+  ylabel <- expression("Observed Stream Temperature" ~ (degree*C))
+  xlabel <- expression("Modelled Stream Temperature" ~ (degree*C))
   
   ### Timeseries plot
   cs.data$c.mod.fv <- c.gam.L$fitted.values
@@ -301,9 +413,10 @@ if (options.gam.plots == TRUE){
            
   #c.gam.L.plot.ts
   
-  ggsave(plot = c.gam.L.plot.ts, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_1_GAMTrend.pdf"), width = 18, height = 10, units = "cm",dpi = 1000)
-  ggsave(plot = c.gam.L.plot.ts, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_1_GAMTrend.jpeg"), width = 18, height = 10, units = "cm",dpi = 330)
-  
+  if (options.saving == TRUE) {
+  ggsave(plot = c.gam.L.plot.ts, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_3_GAMTrend.pdf"), width = 18, height = 10, units = "cm",dpi = 1000)
+  ggsave(plot = c.gam.L.plot.ts, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_3_GAMTrend.jpeg"), width = 18, height = 10, units = "cm",dpi = 330)
+  }
   
   ### Observed vs modelled
   c.gam.L.plot.om <- ggplot() +
@@ -386,7 +499,7 @@ wt.ind <- lapply(W, function(w){
     theme(panel.background = element_blank())+
     theme(panel.border=element_rect(fill=NA, colour="black", size=1)) +
     ggtitle(paste0("Timeseries 1992 - 2021 and GAM. Site = ", cs.ind.site)) +
-    ylab("Water Temp degC") 
+    ylab("Stream Temp degC") 
   #xlim(10,13)
   #ylim(5,30)
   
@@ -447,7 +560,7 @@ wt.ind.p <- left_join(wt.ind.p, site.numbers, by = "Site")
 wt.ind.p$S.num <- as.factor(wt.ind.p$S.num)
 
 wt.ind.colours <- c("positive" = "red","negative" = "#1976D2","neutral" = "grey")
-label.wt <- expression("Water temp. change " ~ (degree*C))
+label.wt <- expression("Stream temp. change " ~ (degree*C))
 
 # now add in data for "all catchment"
 
@@ -464,7 +577,7 @@ wt.ind.p1 <- ggplot(data = wt.ind.p)+
   # ggtitle("River temperature change 1992 - 2021") +
   ylab("Site") +
   xlab(label.wt) +
-  theme(axis.text=element_text(size=4),
+  theme(axis.text.y=element_text(size=4),axis.text.x=element_text(size=6),
         axis.title=element_text(size=7))
 
 #wt.ind.p1
@@ -491,7 +604,7 @@ cs.ind.colours <- c("positive" = "#F44336","negative" = "#1976D2","neutral" = "b
 cs.ind.fill <- c("positive" = "#F44336","negative" = "#1976D2","neutral" = "grey")
 cs.ind.shapes <- c('positive'=24, 'negative'=25, 'neutral'=21)
 
-label.size <- expression("Water temp. change"~(degree*C))
+label.size <- expression("Stream temp. change"~(degree*C))
 
 fig.ind.trends <- ggplot() +
   geom_sf(data = vic, fill = NA, colour = "black") +
@@ -511,12 +624,12 @@ fig.ind.trends <- ggplot() +
          fill = guide_legend(order = 1, reverse = T),
          shape = guide_legend(order = 1, reverse = T),
          size = guide_legend(order = 2, reverse = T))+
-  labs(colour = "Water temp. change \n(direction)")+
-  labs(fill = "Water temp. change \n(direction)")+
-  labs(shape = "Water temp. change \n(direction)")+
+  labs(colour = "Stream temp. change \n(direction)")+
+  labs(fill = "Stream temp. change \n(direction)")+
+  labs(shape = "Stream temp. change \n(direction)")+
   labs(size = label.size)+
 #  theme(legend.position = "right", legend.spacing.y = unit(1, 'mm'))+
-  theme(legend.position = c(0.9,0.22), legend.direction = "vertical", 
+  theme(legend.position = c(0.898,0.22), legend.direction = "vertical", 
         legend.spacing.y = unit(1, 'mm'))+
   theme(legend.title = element_text(size = 5), 
         legend.text  = element_text(size = 5),
@@ -571,12 +684,13 @@ fig1 <- cowplot::ggdraw(plot = blank) +
             x = 0, y = 0.063, width = 0.72, height = 0.937) +
   draw_plot(plot = wt.ind.p1,
             x = 0.72, y = 0, width = 0.28, height = 1.0) +
-  draw_plot_label(label = "a",fontface = "bold",x = 0.02, y = 0.98, hjust = -0.5, vjust = 1.5, size = 10) +
-  draw_plot_label(label = "b",fontface = "bold",x = 0.73, y = 0.98, hjust = -0.5, vjust = 1.5, size = 10)
+  draw_plot_label(label = "(a)",fontface = "bold",x = 0.02, y = 0.98, hjust = -0.5, vjust = 1.5, size = 10) +
+  draw_plot_label(label = "(b)",fontface = "bold",x = 0.73, y = 0.98, hjust = -0.5, vjust = 1.5, size = 10)
 
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_1_Site_Trends.pdf", fig1, width=18, height=10.58, unit="cm", dpi=1000)
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_1_Site_Trends.jpeg", fig1, width=18, height=10.58, unit="cm", dpi=330)
-
+if (options.saving == TRUE) {
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_2_Site_Trends.pdf", fig1, width=18, height=10.58, unit="cm", dpi=1000)
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_2_Site_Trends.jpeg", fig1, width=18, height=10.58, unit="cm", dpi=330)
+}
 
 
 }
@@ -773,7 +887,7 @@ data.wt <- left_join(data.wt, delta.hour, by = "Site")
 ##############################################
 
 data.wt <- left_join(data.wt, data.preds.1992, by = "Site") # Landuse
-spatial.pv <- data.input.spatial[,c("Site","DOR","AF","Elev","GradientPC","Aspect","siteannual.sm.Pc","mean.annual.precip.mm","SoilBulkDensity","ClayPC")] # Add other spatial variables suitable to delta-WT
+spatial.pv <- data.input.spatial[,c("Site","DOR","AF","Elev","GradientPC","Aspect","siteannual.sm.Pc","mean.annual.precip.mm","SoilBulkDensity","ClayPC","MAQ_mm_SM")] # Add other spatial variables suitable to delta-WT
 data.wt <- left_join(data.wt, spatial.pv, by = "Site")
 
 # rename delta landuse variables
@@ -783,6 +897,10 @@ colnames(data.wt)[colnames(data.wt) == "Ag"] <- "deltaAgPc"
 colnames(data.wt)[colnames(data.wt) == "AgKm2"] <- "deltaAgKm2"
 colnames(data.wt)[colnames(data.wt) == "Forest"] <- "deltaForestPc"
 colnames(data.wt)[colnames(data.wt) == "ForestKm2"] <- "deltaForestKm2"
+
+# add in EC and pH
+data.wt <- left_join(data.wt, ec.delta[,c("Site","EC.delta")], by = c("Site"))
+data.wt <- left_join(data.wt, ph.delta[,c("Site","ph.delta")], by = c("Site"))
 
 ########################
 # Set up response and training data
@@ -795,6 +913,8 @@ rf.train$Site <- NULL
 
 rf.response <- data.frame(data = data.wt[,c("data")]) # data (y) for training only
 
+#save.image(file="Outputs/WaterResearch_Stream_Temp/RF_Inputs.RData") 
+
 #######################################
 ### Random Forest model using caret ### 
 #######################################
@@ -803,7 +923,7 @@ rf.response <- data.frame(data = data.wt[,c("data")]) # data (y) for training on
 #mtry <- tuneRF(x = rf.train, y = rf.response$data, ntreeTry = 500, improve = 0.01, stepFactor = 1.5,
 #               trace = F, plot = F)
 
-set.seed(213)
+set.seed(923)
 
 mtry.rf <- 6 # manually set from results of above mtry test
 
@@ -853,7 +973,8 @@ rf.plot.om <- ggplot() +
   theme(panel.background = element_blank())+
   theme(panel.border=element_rect(fill=NA, colour="black", size=1)) +
   theme(legend.position = "none") +
-  ggtitle(paste0("a. Predicted vs observed stream temperatures changes")) +
+  ggtitle(paste0("(a) Stream temperatures changes")) +
+  theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15), plot.title = element_text(size=15)) +
   xlab("Predicted stream temperature change (°C)") +
   ylab("Observed stream temperature change (°C)") +
   xlim(-2,2.3)+
@@ -913,7 +1034,9 @@ var.names <- as.data.frame(c("windSpeed","sm.Pc","srad","precip.mm","tmax",
                              "srad.1day","srad.2day","srad.3day","srad.7day","srad.14day","srad.30day","srad.60day",
                              "sm.Pc.1day","sm.Pc.2day","sm.Pc.3day","sm.Pc.7day","sm.Pc.14day","sm.Pc.30day","sm.Pc.60day",
                              "windSpeed.1day","windSpeed.2day","windSpeed.3day","windSpeed.7day","windSpeed.14day","windSpeed.30day","windSpeed.60day",
-                             "Time"
+                             "Time",
+                             "EC.delta","ph.delta", "EC.site.mean", "ph.site.mean", "EC", "pH",
+                             "MAQ_mm","MAQ_mm_SM"
                              ))
 colnames(var.names) <- "Variable"
 
@@ -938,7 +1061,9 @@ var.names$Vname <- c("Wind speed (change, m/s)","Soil moisture (change, %)", "So
                      "Solar radiation (1 day antecedent)","Solar radiation (mean 2 days antecedent)","Solar radiation (mean 3 days antecedent)","Solar radiation (mean 7 days antecedent)","Solar radiation (mean 14 days antecedent)","Solar radiation (mean 30 days antecedent)","Solar radiation (mean 60 days antecedent)",
                      "Soil moisture (1 day antecedent)","Soil moisture (mean 2 days antecedent)","Soil moisture (mean 3 days antecedent)","Soil moisture (mean 7 days antecedent)","Soil moisture (mean 14 days antecedent)","Soil moisture (mean 30 days antecedent)","Soil moisture (mean 60 days antecedent)",
                      "Wind speed (1 day antecedent)","Wind speed (mean 2 days antecedent)","Wind speed (mean 3 days antecedent)","Wind speed (mean 7 days antecedent)","Wind speed (mean 14 days antecedent)","Wind speed (mean 30 days antecedent)","Wind speed (mean 60 days antecedent)",
-                     "Time of day"
+                     "Time of day",
+                     "Electical conductivity (change)","pH (change)", "Electical conductivity (site mean)","pH (site mean)","Electrical conductivity","pH",
+                     "Total annual discharge (change, mm)","Total annual discharge (mm, site mean)"
                      )    
 
 
@@ -960,7 +1085,9 @@ var.names$Influence <- c("Atmosphere","Stream","Atmosphere","Stream","Atmosphere
                       "Atmosphere","Atmosphere","Atmosphere","Atmosphere","Atmosphere","Atmosphere","Atmosphere",
                       "Stream","Stream","Stream","Stream","Stream","Stream","Stream",
                       "Atmosphere","Atmosphere","Atmosphere","Atmosphere","Atmosphere","Atmosphere","Atmosphere",
-                      "Atmosphere"
+                      "Atmosphere",
+                      "Stream","Stream","Stream","Stream","Stream","Stream",
+                      "Stream","Stream"
                       )
 
 rf.varimp.df <- left_join(rf.varimp.df, var.names, by = "Variable")
@@ -989,7 +1116,7 @@ rf.varimp.plot <- ggplot(data = rf.varimp.df, aes(x = Importance, y = Vname, fil
   theme(axis.title.x = element_blank()) +
  # xlim(0,112) +
   scale_x_continuous(breaks = c(0,25,50,75,100), limits = c(0,105)) +
-  ggtitle("a. Changes in stream temperature") +
+  ggtitle("(a) Changes in stream temperature") +
   theme(legend.position = c(0.82,0.20), legend.direction = "vertical", 
         legend.spacing.y = unit(1, 'mm'), legend.key.size = unit(3,'mm'))+
   theme(axis.text=element_text(size=4), axis.title=element_text(size=5),
@@ -999,8 +1126,8 @@ rf.varimp.plot <- ggplot(data = rf.varimp.df, aes(x = Importance, y = Vname, fil
   
 #rf.varimp.plot
 
-#ggsave(plot = rf.varimp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_2_A_deltaWT_VarImpPlot.pdf"),
-#       width=9, height=7, unit="cm", dpi=1000)
+ggsave(plot = rf.varimp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_3_A_deltaWT_VarImpPlot.pdf"),
+       width=9, height=7, unit="cm", dpi=1000)
 
 
 
@@ -1060,15 +1187,17 @@ if (options.pdp == TRUE){
   
   # Save all pdp's
   pdp.preds.p.all <-  do.call(gridExtra::grid.arrange,pdp.preds.p.store)
+  if (options.saving == TRUE) {
   ggsave(plot = pdp.preds.p.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/deltaWT_PDP_plots.pdf"), 
          width=24, height=24, unit="cm", dpi=1000)
   
   ggsave(plot = pdp.preds.p.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/deltaWT_PDP_plots.jpeg"), 
          width=24, height=24, unit="cm", dpi=330)
+  }
   
   ######################################
   ### Select PDPs of interest (Figure 3)
-  pdp.preds.list <- c("UrbanKm2.1992","deltaUrbanKm2","tmax","sm.Pc")
+  pdp.preds.list <- c("UrbanKm2.1992","deltaUrbanKm2","tmax","MAQ_mm")
   pdp.preds.p.store <- vector('list', length = length(pdp.preds.list))
   label.pdp2 <- bquote(paste("Marginal effect (°C)"))
   label.pdp3 <- bquote(paste(" "))
@@ -1135,8 +1264,8 @@ pdp.labs.lab <- bquote(paste("Increases \nin stream \ntemperature (°C)"))
 pdp.site.labs <- data.wt
 pdp.site.labs <- left_join(pdp.site.labs, site.numbers, by = "Site")
 pdp.site.labs <- pdp.site.labs[,c("S.num","UrbanKm2.1992","tmax")]
-#pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18),]
-pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18,31,35,42,12,23),]
+pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18),]
+#pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18,31,35,42,12,23),]
 
 rf.pdp.plot <- rf.pdp$plot() + 
   theme(panel.background = element_blank())+
@@ -1153,12 +1282,13 @@ rf.pdp.plot <- rf.pdp$plot() +
 
 rf.pdp.plot
 
-ggsave(plot = rf.pdp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_4_deltaWT_AT_Urban_PDP_plot.pdf"), 
+if (options.saving == TRUE) {
+ggsave(plot = rf.pdp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Figure_5_deltaWT_AT_Urban_PDP_plot.pdf"), 
        width=9, height=6.5, unit="cm", dpi=1000)
 
-ggsave(plot = rf.pdp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_4_deltaWT_AT_Urban_PDP_plot.jpeg"), 
+ggsave(plot = rf.pdp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Figure_5_deltaWT_AT_Urban_PDP_plot.jpeg"), 
        width=9, height=6.5, unit="cm", dpi=330)
-
+}
 
 ## PDP plotting alternate (for interest) = delta Urban and delta AT
 pdp.pred <- c("tmax","deltaUrbanKm2")  
@@ -1174,8 +1304,8 @@ pdp.labs.lab <- bquote(paste("Increases \nin stream \ntemperature (°C)"))
 pdp.site.labs <- data.wt
 pdp.site.labs <- left_join(pdp.site.labs, site.numbers, by = "Site")
 pdp.site.labs <- pdp.site.labs[,c("S.num","deltaUrbanKm2","tmax")]
-#pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18),]
-pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18,31,35,42),]
+pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18),]
+#pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18,31,35,42),]
 
 rf.pdp.plot <- rf.pdp$plot() + 
   theme(panel.background = element_blank())+
@@ -1332,7 +1462,7 @@ GIS.at.delta$WTtrend <- as.factor(GIS.at.delta$WTtrend)
 levels(GIS.at.delta$WTtrend) <- c("negative","neutral","positive")
 
 label.size <- expression("Water temp. change " ~ (degree*C))
-label.fill <- expression("Precipitation change \nmm/month")
+label.fill <- expression("Precipitation change (mm)")
 
 fig.Precip.trends <- ggplot() +
   geom_sf(data = vic, fill = NA, colour = "black") +
@@ -1342,8 +1472,66 @@ fig.Precip.trends <- ggplot() +
   geom_sf(data = GIS.at.delta, aes(fill = precip.mm,shape = WTtrend,  size = data), colour = "grey50") +
   geom_sf_text(data = GIS.wt.sitenum, aes(label = S.num),nudge_x = GIS.wt.sitenum$xnudge, nudge_y = GIS.wt.sitenum$ynudge, 
                colour = "black", size = 1) +
-  scale_fill_distiller(palette = "Blues", direction = 1, na.value = "grey60", limits = c(-15.01,0.1),labels = c("-15","-10","-5","0")) +
-  scale_colour_distiller(palette = "Blues", direction = 1, na.value = "grey60") +
+  #scale_fill_distiller(palette = "Reds", direction = -1, na.value = "grey60", limits = c(-15.01,0.1),labels = c("-15","-10","-5","0")) +
+  scale_fill_distiller(palette = "RdBu", direction = 1, na.value = "grey60", limits = c(-15.01,15.01),labels = c("-15","-10","-5","0","5","10","15")) +
+  scale_colour_distiller(palette = "Reds", direction = -1, na.value = "grey60") +
+  scale_shape_manual(values = rf.shapes) +
+  scale_size_continuous(range = c(1,4)) +
+  labs(fill = label.fill)+
+  labs(shape = "Water temp. change \n(direction)")+
+  labs(size = label.size)+
+  #  theme(legend.position = "right", legend.spacing.y = unit(1, 'mm'))+
+  guides(shape = guide_legend(override.aes = list(size = 1))) +
+  theme(legend.title = element_text(size = 5), 
+        legend.text  = element_text(size = 5),
+        legend.key.size = unit(0.75, "lines"))+
+  guides(shape = guide_legend(order = 1, reverse = T),
+         size = guide_legend(order = 2, reverse = T)) +
+  theme(panel.background = element_blank())+
+  theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())+
+  coord_sf(default_crs = sf::st_crs(4326), xlim = c(144, 146.8), ylim = c(-37.1,-38.6), expand = F)+
+  theme(legend.position = c(0.89,0.5), legend.spacing.y = unit(1, 'mm'))+
+  theme(panel.border=element_rect(fill=NA, colour="black", linewidth=1)) 
+
+#fig.Precip.trends
+#ggsave(file = "Outputs/WaterResearch_Stream_Temp/Map_Precip.pdf", fig.Precip.trends, width=15, height=10, unit="cm", dpi=1000)
+
+###########################################
+### RF output plotting :: TAQ ###
+###########################################
+
+delta.taq <- data.wt
+delta.taq <- delta.taq[,c("Site","data","MAQ_mm")]
+
+GIS.at.delta <- left_join(GIS.lt, delta.taq, by = "Site")
+GIS.at.delta$data <- abs(GIS.at.delta$data)
+GIS.at.delta <- GIS.at.delta[!is.na(GIS.at.delta$MAQ_mm),]
+GIS.at.delta <- GIS.at.delta[order(GIS.at.delta$MAQ_mm),]
+
+#GIS.at.delta$UrbanKm2.1992 <- ifelse(GIS.at.delta$UrbanKm2.1992 > 30, 30, GIS.at.delta$UrbanKm2.1992)
+
+GIS.at.delta <- left_join(GIS.at.delta, rf.plot.colours, by = "Site")
+GIS.at.delta <- left_join(GIS.at.delta, site.numbers, by = "Site")
+
+rf.colours <- c("positive" = "red","negative" = "blue","neutral" = "grey")
+rf.shapes <- c('positive'=24, 'negative'=25, 'neutral'=21)
+
+GIS.at.delta$WTtrend <- as.factor(GIS.at.delta$WTtrend)
+levels(GIS.at.delta$WTtrend) <- c("negative","neutral","positive")
+
+label.size <- expression("Water temp. change " ~ (degree*C))
+label.fill <- expression("Total annual discharge \nchange (mm)")
+
+fig.TAQ.trends <- ggplot() +
+  geom_sf(data = vic, fill = NA, colour = "black") +
+  geom_sf(data = GIS.catch, fill = "white") +
+  geom_sf(data = GIS.storages[GIS.storages$ASSET_NAME != "THOMSON RESERVOIR",], fill = "grey70", colour = NA ,linewidth = 0.1,alpha = 0.4) +
+  geom_sf(data = GIS.streams, colour = "grey70", alpha = 0.4) +
+  geom_sf(data = GIS.at.delta, aes(fill = MAQ_mm,shape = WTtrend,  size = data), colour = "grey50") +
+  geom_sf_text(data = GIS.wt.sitenum, aes(label = S.num),nudge_x = GIS.wt.sitenum$xnudge, nudge_y = GIS.wt.sitenum$ynudge, 
+               colour = "black", size = 1) +
+  scale_fill_distiller(palette = "RdBu", direction = 1, na.value = "grey60", limits = c(-140,140),breaks = c(-120,-80,-40,0,40,80,120),labels = c("-120","-80","-40","0","40","80","120")) +
+  scale_colour_distiller(palette = "RdBu", direction = 1, na.value = "grey60") +
   scale_shape_manual(values = rf.shapes) +
   scale_size_continuous(range = c(1,4)) +
   labs(fill = label.fill)+
@@ -1363,8 +1551,7 @@ fig.Precip.trends <- ggplot() +
   theme(panel.border=element_rect(fill=NA, colour="black", linewidth=1)) 
 
 #fig.Urban.trends
-#ggsave(file = "Outputs/WaterResearch_Stream_Temp/Map_Precip.pdf", fig.Precip.trends, width=15, height=10, unit="cm", dpi=1000)
-
+#ggsave(file = "Outputs/WaterResearch_Stream_Temp/Map_SoilM.pdf", fig.SM.trends, width=15, height=10, unit="cm", dpi=1000)
 
 ###########################################
 ### RF output plotting :: soil moisture ###
@@ -1400,8 +1587,8 @@ fig.SM.trends <- ggplot() +
   geom_sf(data = GIS.at.delta, aes(fill = sm.Pc,shape = WTtrend,  size = data), colour = "grey50") +
   geom_sf_text(data = GIS.wt.sitenum, aes(label = S.num),nudge_x = GIS.wt.sitenum$xnudge, nudge_y = GIS.wt.sitenum$ynudge, 
                colour = "black", size = 1) +
-  scale_fill_distiller(palette = "Greens", direction = 1, na.value = "grey60", limits = c(-0.06,0.04),breaks = c(-0.06,-0.03,0,0.03),labels = c("-0.06","-0.03","0","0.03")) +
-  scale_colour_distiller(palette = "Greens", direction = 1, na.value = "grey60") +
+  scale_fill_distiller(palette = "RdBu", direction = 1, na.value = "grey60", limits = c(-0.06,0.06),breaks = c(-0.06,-0.03,0,0.03,0.06),labels = c("-0.06","-0.03","0","0.03","0.06")) +
+  scale_colour_distiller(palette = "RdBu", direction = 1, na.value = "grey60") +
   scale_shape_manual(values = rf.shapes) +
   scale_size_continuous(range = c(1,4)) +
   labs(fill = label.fill)+
@@ -1433,25 +1620,30 @@ fig5 <- cowplot::ggdraw(plot = blank) +
             x = 0, y = 0.5, width = 1.0, height = 0.5) +
   draw_plot(plot = fig.Urban.trends,
             x = 0, y = 0.0, width = 1.0, height = 0.5) +
-  draw_plot_label(label = "a",fontface = "bold",x = 0.04, y = 0.98, hjust = -0.5, vjust = 1.0, size = 9) +
-  draw_plot_label(label = "b",fontface = "bold",x = 0.04, y = 0.48, hjust = -0.5, vjust = 1.0, size = 9)
+  draw_plot_label(label = "(a)",fontface = "bold",x = 0.04, y = 0.98, hjust = -0.5, vjust = 1.0, size = 9) +
+  draw_plot_label(label = "(b)",fontface = "bold",x = 0.04, y = 0.48, hjust = -0.5, vjust = 1.0, size = 9)
 
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_5_AT_Urban.pdf", fig5, width=15, height=20, unit="cm", dpi=1000)
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_5_AT_Urban.jpeg", fig5, width=15, height=20, unit="cm", dpi=330)
-
+if (options.saving == TRUE) {
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_6_AT_Urban.pdf", fig5, width=15, height=20, unit="cm", dpi=1000)
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_6_AT_Urban.jpeg", fig5, width=15, height=20, unit="cm", dpi=330)
+}
 
 
 fig.suppl.2 <- cowplot::ggdraw(plot = blank) +
   draw_plot(plot = fig.Precip.trends,
-            x = 0, y = 0.5, width = 1.0, height = 0.5) +
+            x = 0, y = 0.66, width = 1.0, height = 0.33) +
+  draw_plot(plot = fig.TAQ.trends,
+            x = 0, y = 0.33, width = 1.0, height = 0.33) +
   draw_plot(plot = fig.SM.trends,
-            x = 0, y = 0.0, width = 1.0, height = 0.5) +
-  draw_plot_label(label = "a", fontface = "bold",x = 0.04, y = 0.98, hjust = -0.5, vjust = 1.5, size = 9) +
-  draw_plot_label(label = "b", fontface = "bold",x = 0.04, y = 0.48, hjust = -0.5, vjust = 1.5, size = 9)
+            x = 0, y = 0.0, width = 1.0, height = 0.33) +
+  draw_plot_label(label = "(a)", fontface = "bold",x = 0.06, y = 0.97, hjust = 0, vjust = 0, size = 9) +
+  draw_plot_label(label = "(b)", fontface = "bold",x = 0.06, y = 0.635, hjust = 0, vjust = 0, size = 9) +
+  draw_plot_label(label = "(c)", fontface = "bold",x = 0.06, y = 0.305, hjust = 0, vjust = 0, size = 9)
 
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_2_Precip_SM.pdf", fig.suppl.2, width=15, height=20, unit="cm", dpi=1000)
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_2_Precip_SM.jpeg", fig.suppl.2, width=15, height=20, unit="cm", dpi=330)
-
+if (options.saving == TRUE) {
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_4_Precip_SM.pdf", fig.suppl.2, width=15, height=30, unit="cm", dpi=1000)
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Suppl_Fig_4_Precip_SM.jpeg", fig.suppl.2, width=15, height=30, unit="cm", dpi=330)
+}
 
 ##########################
 ### Cross correlations ###
@@ -1543,6 +1735,11 @@ data.sp <- left_join(data.sp, data.landcover, by = "Site") # add in landcover va
 data.sp <- left_join(wt.site.mean, data.sp, by = "Site") # add in site mean WT, adding now to ensure same order in sp.train / sp.response below
 colnames(data.sp)[colnames(data.sp) == "WT.site.mean"] <- "data"
 
+# add in EC and pH
+data.sp <- left_join(data.sp, ec.delta[,c("Site","EC.site.mean")], by = c("Site"))
+data.sp <- left_join(data.sp, ph.delta[,c("Site","ph.site.mean")], by = c("Site"))
+
+
 ### Summary stats
 data.sp.summary <- tidyr::pivot_longer(data = data.sp, cols = c(2:21))
 data.sp.summary$Site <- NULL
@@ -1631,7 +1828,8 @@ sp.plot.om <- ggplot() +
   theme(panel.background = element_blank())+
   theme(panel.border=element_rect(fill=NA, colour="black", size=1)) +
   theme(legend.position = "none") +
-  ggtitle(paste0("c. Predicted vs observed site mean stream temperature")) +
+  ggtitle(paste0("(c) Site mean stream temperature")) +
+  theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15), plot.title = element_text(size=15)) +
   xlab("Predicted site mean stream temperature (°C)") +
   ylab("Observed site mean stream temperature (°C)") +
   xlim(10,18)+
@@ -1701,7 +1899,7 @@ sp.varimp.plot <- ggplot(data = sp.varimp.df, aes(x = Importance, y = Vname, fil
   # xlim(0,112) +
   scale_x_continuous(breaks = c(0,25,50,75,100), limits = c(0,105)) +
   scale_y_discrete(position = "left")+
-  ggtitle("c. Site mean stream temperature") +
+  ggtitle("(c) Site mean stream temperature") +
   theme(legend.position = c(0.82,0.20), legend.direction = "vertical", 
         legend.spacing.y = unit(1, 'mm'), legend.key.size = unit(3,'mm'))+
   theme(axis.text=element_text(size=4), axis.title=element_text(size=5),
@@ -1728,7 +1926,7 @@ sp.varimp.plot <- ggplot(data = sp.varimp.df, aes(y = -Importance, x = Vname, fi
   # xlim(0,112) +
   scale_y_continuous(limits = c(-110,0), breaks = c(0,-25,-50,-75,-100), labels = c(0,25,50,75,100)) +
   scale_x_discrete(position = "top")+
-  ggtitle("c. Site mean stream temperature") +
+  ggtitle("(c) Site mean stream temperature") +
   theme(legend.position = c(0.2,0.20), legend.direction = "vertical", 
         legend.spacing.y = unit(1, 'mm')) +
   
@@ -1736,8 +1934,8 @@ sp.varimp.plot <- ggplot(data = sp.varimp.df, aes(y = -Importance, x = Vname, fi
 sp.varimp.plot
 }
 
-#ggsave(plot = sp.varimp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_2_C_spWT_VarImpPlot.pdf"),
-#       width=9, height=7, unit="cm", dpi=1000)
+ggsave(plot = sp.varimp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_3_C_spWT_VarImpPlot.pdf"),
+       width=9, height=7, unit="cm", dpi=1000)
 
 
 
@@ -1797,9 +1995,10 @@ if (options.pdp == TRUE){
   
   # Save all pdp's
   sp.pdp.preds.p.all <-  do.call(gridExtra::grid.arrange,sp.pdp.preds.p.store)
+  if (options.saving == TRUE) {
   ggsave(plot = sp.pdp.preds.p.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/spWT_PDP_plots.pdf"), 
          width=24, height=24, unit="cm", dpi=1000)
-  
+  }
   # select top5 most important
   #sp.pdp.preds.top <- gridExtra::grid.arrange(grobs = sp.pdp.preds.p.store[1:3], ncol = 3)
   #ggsave(plot = sp.pdp.preds.top, filename = paste0("Outputs/WaterResearch_Stream_Temp/spWT_PDP_plots_top5.pdf"), 
@@ -1874,8 +2073,6 @@ colnames(data.st)[colnames(data.st) == "Value_Numeric"] <- "data"
 ################################
 ### Create time related fields
 
-data.st$Year <- NULL
-data.st$Date <- NULL
 # Decimal Year 
 #data.st$Year <- year(data.st$Date) - 1992 +
 #  ( yday(data.st$Date) / yday(as.Date(paste0(year(data.st$Date), "-12-31"), format = "%Y-%m-%d") ) )
@@ -1893,6 +2090,40 @@ data.st.sp <- data.sp
 data.st.sp$data <- NULL
 data.st <- left_join(data.st, data.st.sp, by = "Site")
 rm(data.st.sp)
+
+################################
+### Add EC and pH
+ec <- read.csv("Outputs/WT/EC.data.record.csv", header = T) # load EC data
+
+ec$Time <- as.numeric(substr(ec$Time,1,2)) + (as.numeric(substr(ec$Time,4,5))/60)
+ec$Time <- round(ec$Time, digits = 2)
+ec$Date <- as.Date(ec$Date)
+
+#data.st1 <- data.st[,c("Site","Date","Time","data")]
+data.st$Date <- as.Date(as.character(data.st$Date))
+data.st$Time <- round(as.numeric(data.st$Time), digits = 2)
+
+data.st <- left_join(data.st, ec, by = c("Site","Date","Time"))
+
+data.st <- data.st[!is.na(data.st$EC),]
+
+
+ph <- read.csv("Outputs/WT/PH.data.record.csv", header = T) # load EC data
+
+ph$Time <- as.numeric(substr(ph$Time,1,2)) + (as.numeric(substr(ph$Time,4,5))/60)
+ph$Time <- round(ph$Time, digits = 2)
+ph$Date <- as.Date(ph$Date)
+
+data.st$Date <- as.Date(as.character(data.st$Date))
+data.st$Time <- round(as.numeric(data.st$Time), digits = 2)
+
+data.st <- left_join(data.st, ph, by = c("Site","Date","Time"))
+
+data.st <- data.st[!is.na(data.st$pH),]
+
+data.st$Year <- NULL
+data.st$Date <- NULL
+
 
 ################################
 ### Rename landcover variables
@@ -1974,7 +2205,8 @@ st.plot.om <- ggplot() +
   theme(panel.background = element_blank())+
   theme(panel.border=element_rect(fill=NA, colour="black", size=1)) +
   theme(legend.position = "none") +
-  ggtitle(paste0("b. Predicted vs observed spatio-temporal stream temperature")) +
+  theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15), plot.title = element_text(size=15)) +
+  ggtitle(paste0("(b) Spatio-temporal stream temperature")) +
   xlab("Predicted stream temperature (°C)") +
   ylab("Observed stream temperature (°C)") 
  # xlim(10,18)+
@@ -1988,12 +2220,13 @@ st.plot.om <- ggplot() +
 # grid arrange all three OM plots
 
 plot.om.all <- gridExtra::grid.arrange(rf.plot.om, st.plot.om, sp.plot.om, ncol = 3)
-ggsave(plot = plot.om.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_4_Obvs_pred_all.pdf"),
+if (options.saving == TRUE) {
+ggsave(plot = plot.om.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_2_Obvs_pred_all.pdf"),
        width=42, height=14, unit="cm", dpi=1000)
 
-ggsave(plot = plot.om.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_4_Obvs_pred_all.jpeg"),
+ggsave(plot = plot.om.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/Suppl_Fig_2_Obvs_pred_all.jpeg"),
        width=42, height=14, unit="cm", dpi=330)
-
+}
 #########################
 ### Model performance ###
 #########################
@@ -2081,15 +2314,15 @@ st.varimp.plot <- ggplot(data = st.varimp.df, aes(y = -Importance, x = Vname, fi
   # xlim(0,112) +
   scale_y_continuous(limits = c(-110,0), breaks = c(0,-25,-50,-75,-100), labels = c(0,25,50,75,100)) +
   scale_x_discrete(position = "top")+
-  ggtitle("b. Drivers of site mean water temperature") +
+  ggtitle("(b) Drivers of site mean water temperature") +
   theme(legend.position = c(0.2,0.20), legend.direction = "vertical", 
         legend.spacing.y = unit(1, 'mm'))
 
 st.varimp.plot
 }
 
-#ggsave(plot = st.varimp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_2_B_stWT_VarImpPlot.pdf"),
-#       width=9, height=7, unit="cm", dpi=1000)
+ggsave(plot = st.varimp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_3_B_stWT_VarImpPlot.pdf"),
+       width=9, height=7, unit="cm", dpi=1000)
 
 ########################
 ### Combine VarImp plots 
@@ -2104,12 +2337,13 @@ fig2 <- cowplot::ggdraw(plot = blank) +
   #draw_plot_label(label = "A",x = 0.02, y = 0.98, hjust = -0.5, vjust = 1.5, size = 10) +
   #draw_plot_label(label = "B",x = 0.73, y = 0.98, hjust = -0.5, vjust = 1.5, size = 10)
 
-ggsave(plot = fig2, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_2_VarImpPlot.pdf"),
+if (options.saving == TRUE) {
+ggsave(plot = fig2, filename = paste0("Outputs/WaterResearch_Stream_Temp/Figure_3_VarImpPlot.pdf"),
        width=9, height=21, unit="cm", dpi=1000)
 
-ggsave(plot = fig2, filename = paste0("Outputs/WaterResearch_Stream_Temp/Fig_2_VarImpPlot.jpeg"),
+ggsave(plot = fig2, filename = paste0("Outputs/WaterResearch_Stream_Temp/Figure_3_VarImpPlot.jpeg"),
        width=9, height=21, unit="cm", dpi=330)
-
+}
 
 ################################
 ### Partial dependence plots ###
@@ -2160,6 +2394,7 @@ if (options.pdp == TRUE){
   
   # Save all pdp's
   st.pdp.preds.p.all <-  do.call(gridExtra::grid.arrange,st.pdp.preds.p.store)
+  if (options.saving == TRUE) {
   ggsave(plot = st.pdp.preds.p.all, filename = paste0("Outputs/WaterResearch_Stream_Temp/stWT_PDP_plots.pdf"), 
          width=24, height=24, unit="cm", dpi=1000)
   
@@ -2167,7 +2402,7 @@ if (options.pdp == TRUE){
   st.pdp.preds.top5 <- gridExtra::grid.arrange(grobs = st.pdp.preds.p.store[1:5], ncol = 5)
   ggsave(plot = st.pdp.preds.top5, filename = paste0("Outputs/WaterResearch_Stream_Temp/stWT_PDP_plots_top5.pdf"), 
          width=35, height=7, unit="cm", dpi=1000)
-  
+  }
   
   ######################################
   ### Select PDPs of interest (Figure 6)
@@ -2227,13 +2462,14 @@ fig3 <- cowplot::ggdraw(plot = blank) +
             x = 0, y = 0.33, width = 0.75, height = 0.33) +
   draw_plot(plot = sp.pdp.preds.top,
             x = 0, y = 0, width = 0.75, height = 0.33) +
-  draw_plot_label(label = "a",fontface = "bold",x = 0.01, y = 0.98, hjust = -0.5, vjust = 1.0, size = 9) +
-  draw_plot_label(label = "b",fontface = "bold",x = 0.01, y = 0.64, hjust = -0.5, vjust = 1.0, size = 9) +
-  draw_plot_label(label = "c",fontface = "bold",x = 0.01, y = 0.31, hjust = -0.5, vjust = 1.0, size = 9)
+  draw_plot_label(label = "(a)",fontface = "bold",x = 0.01, y = 0.98, hjust = -0.5, vjust = 1.0, size = 9) +
+  draw_plot_label(label = "(b)",fontface = "bold",x = 0.01, y = 0.64, hjust = -0.5, vjust = 1.0, size = 9) +
+  draw_plot_label(label = "(c)",fontface = "bold",x = 0.01, y = 0.31, hjust = -0.5, vjust = 1.0, size = 9)
 
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_3_pdp.pdf", fig3, width=18, height=15, unit="cm", dpi=1000)
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_3_pdp.jpeg", fig3, width=18, height=15, unit="cm", dpi=330)
-
+if (options.saving == TRUE) {
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_4_pdp.pdf", fig3, width=18, height=15, unit="cm", dpi=1000)
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_4_pdp.jpeg", fig3, width=18, height=15, unit="cm", dpi=330)
+}
 
 #####################################################################################################################################################################
 ### PART E: Methods figures ###
@@ -2527,17 +2763,18 @@ fig7 <- cowplot::ggdraw(plot = blank) +
             x = 0.64, y = 0.055, width = 0.36, height = 0.48) +
   draw_plot(plot = fig7C_legend,
             x = 0.94, y = 0.27, width = 0.1, height = 0.1) +
-  draw_plot_label(label = "a",fontface = "bold",x = 0.08, y = 0.95, hjust = -0.5, vjust = 1.0, size = 9) +
-  draw_plot_label(label = "b",fontface = "bold",x = 0.66, y = 0.95, hjust = -0.5, vjust = 1.0, size = 9) +
-  draw_plot_label(label = "c",fontface = "bold",x = 0.66, y = 0.50, hjust = -0.5, vjust = 1.0, size = 9)
+  draw_plot_label(label = "(a)",fontface = "bold",x = 0.08, y = 0.95, hjust = -0.5, vjust = 1.0, size = 9) +
+  draw_plot_label(label = "(b)",fontface = "bold",x = 0.66, y = 0.95, hjust = -0.5, vjust = 1.0, size = 9) +
+  draw_plot_label(label = "(c)",fontface = "bold",x = 0.66, y = 0.50, hjust = -0.5, vjust = 1.0, size = 9)
 
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_6_Methods.pdf", fig7, width=18, height=10, unit="cm", dpi=1000)
-ggsave(file = "Outputs/WaterResearch_Stream_Temp/Fig_6_Methods.jpeg", fig7, width=18, height=10, unit="cm", dpi=330)
-
+if (options.saving == TRUE) {
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_1_Methods.pdf", fig7, width=18, height=10, unit="cm", dpi=1000)
+ggsave(file = "Outputs/WaterResearch_Stream_Temp/Figure_1_Methods.jpeg", fig7, width=18, height=10, unit="cm", dpi=330)
+}
 
 #########################
 ### Save .Rdata image ###
 #########################
 
-save.image(file="Outputs/WaterResearch_Stream_Temp/WaterResearch_20230710.RData") 
+save.image(file="Outputs/WaterResearch_Stream_Temp/WaterResearch_20230905.RData") 
 

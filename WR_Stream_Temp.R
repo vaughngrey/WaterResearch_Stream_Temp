@@ -2278,7 +2278,7 @@ st.varimp.plot <- ggplot(data = st.varimp.df, aes(x = Importance, y = Vname, fil
   scale_x_continuous(breaks = c(0,25,50,75,100), limits = c(0,105)) +
   scale_y_discrete(position = "left")+
   ggtitle("Relative importance of drivers of changes in water temperature") +
-  ggtitle("b. Spatio-temporal stream temperature") +
+  ggtitle("(b) Spatio-temporal stream temperature") +
   theme(legend.position = c(0.82,0.20), legend.direction = "vertical", 
         legend.spacing.y = unit(1, 'mm'), legend.key.size = unit(3,'mm'))+
   theme(axis.text=element_text(size=4), axis.title=element_text(size=5),

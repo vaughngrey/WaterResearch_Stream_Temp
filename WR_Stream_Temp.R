@@ -5,6 +5,7 @@
 # Created: 16/05/2023
 # Version for initial submission to Water Research: 10/07/2023
 # Updated 05/09/2023 responding to reviewer comments
+# Final version as per accepted manuscript on 6 October 2023
 
 #' Code parts:
 #' Part A: Calculation of water temperature trends

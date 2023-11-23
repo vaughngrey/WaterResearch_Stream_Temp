@@ -5,7 +5,8 @@
 # Created: 16/05/2023
 # Version for initial submission to Water Research: 10/07/2023
 # Updated 05/09/2023 responding to reviewer comments
-# Final version as per accepted manuscript on 6 October 2023
+# Final version as per accepted manuscript on 6 October 2023 
+# Final page proofs on 23 November 2023
 
 #' Code parts:
 #' Part A: Calculation of water temperature trends
@@ -610,8 +611,8 @@ fig.ind.trends <- ggplot() +
   geom_sf(data = GIS.wt.delta, aes(colour = pColour, fill = pColour, shape = pColour, size = psize)) +
   geom_sf_text(data = GIS.wt.sitenum, aes(label = S.num),nudge_x = GIS.wt.sitenum$xnudge, nudge_y = GIS.wt.sitenum$ynudge, 
                colour = "black", size = 1) +
-  scale_colour_manual(values = cs.ind.colours) +
-  scale_fill_manual(values = cs.ind.fill) +
+  scale_colour_manual(values = wt.ind.colours) +
+  scale_fill_manual(values = wt.ind.colours) +
   scale_shape_manual(values = cs.ind.shapes) +
   scale_size_continuous(range = c(1,4)) +
   guides(colour = guide_legend(order = 1, reverse = T),
@@ -1261,11 +1262,17 @@ pdp.site.labs <- pdp.site.labs[,c("S.num","UrbanKm2.1992","tmax")]
 pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18),]
 #pdp.site.labs <- pdp.site.labs[pdp.site.labs$S.num %in% c(4,5,10,7,74,75,50,18,31,35,42,12,23),]
 
+pdp.hm <- pdp.test
+colnames(pdp.hm) <- c("tmax","UrbanKm2.1992", "PDPValue","Type")
+
 rf.pdp.plot <- rf.pdp$plot() + 
+  #ggplot()+
+  geom_tile(data = pdp.hm, aes(x = tmax, y = UrbanKm2.1992, fill = PDPValue, colour = PDPValue)) + 
   theme(panel.background = element_blank())+
   theme(panel.border=element_rect(fill=NA, colour="black", size=1)) +
   labs(fill = pdp.labs.lab)+
-  scale_fill_distiller(palette = "Reds", direction = 1, na.value = "grey60", limits = c(0.3,0.91), labels = c(0.3,0.4,0.5,0.6,0.7,0.8,0.9)) +
+  scale_fill_distiller(palette = "Reds", direction = 1, limits = c(0.3,0.91), labels = c(0.3,0.4,0.5,0.6,0.7,0.8,0.9)) +
+  scale_colour_distiller(palette = "Reds", direction = 1, limits = c(0.3,0.91), labels = c(0.3,0.4,0.5,0.6,0.7,0.8,0.9), guide = "none") +
   xlab(pdp.x.lab) +
   ylab(pdp.y.lab) +
   geom_text(data = pdp.site.labs, aes(y = UrbanKm2.1992, x = tmax, label = S.num), size = 2)+
@@ -1281,7 +1288,7 @@ ggsave(plot = rf.pdp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/
        width=9, height=6.5, unit="cm", dpi=1000)
 
 ggsave(plot = rf.pdp.plot, filename = paste0("Outputs/WaterResearch_Stream_Temp/Figure_5_deltaWT_AT_Urban_PDP_plot.jpeg"), 
-       width=9, height=6.5, unit="cm", dpi=330)
+       width=9, height=6.5, unit="cm", dpi=1000)
 }
 
 ## PDP plotting alternate (for interest) = delta Urban and delta AT
